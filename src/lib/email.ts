@@ -3,30 +3,30 @@ import nodemailer from "nodemailer";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 function getTransporter() {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
-        throw new Error("EMAIL_USER and EMAIL_APP_PASSWORD environment variables must be set");
-    }
-    return nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_APP_PASSWORD,
-        },
-    });
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
+    throw new Error("EMAIL_USER and EMAIL_APP_PASSWORD environment variables must be set");
+  }
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_APP_PASSWORD,
+    },
+  });
 }
 
 export async function sendMagicLinkEmail(
-    to: string,
-    token: string
+  to: string,
+  token: string
 ): Promise<void> {
-    const magicLink = `${APP_URL}/magic-login?token=${token}&email=${encodeURIComponent(to)}`;
-    const transporter = getTransporter();
+  const magicLink = `${APP_URL}/magic-login?token=${token}`;
+  const transporter = getTransporter();
 
-    await transporter.sendMail({
-        from: `"Magic Link Auth" <${process.env.EMAIL_USER}>`,
-        to,
-        subject: "Your Secure Login Link",
-        html: `
+  await transporter.sendMail({
+    from: `"Magic Link Auth" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: "Your Secure Login Link",
+    html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #7C3AED;">Sign in to your account</h2>
         <p>Click the button below to securely sign in. No password needed!</p>
@@ -43,5 +43,5 @@ export async function sendMagicLinkEmail(
         </p>
       </div>
     `,
-    });
+  });
 }
