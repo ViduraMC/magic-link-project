@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { clearRefreshTokenCookie } from "@/lib/cookies";
+import { getRefreshTokenCookie, clearRefreshTokenCookie } from "@/lib/cookies";
+import { hashToken } from "@/lib/tokens";
 import { ApiResponse } from "@/types";
 
 export async function POST() {
@@ -9,9 +10,24 @@ export async function POST() {
         const currentUser = await getCurrentUser();
 
         if (currentUser) {
+            // If we have a valid JWT, delete ALL sessions for this user
             await prisma.session.deleteMany({
                 where: { userId: currentUser.userId },
             });
+        } else {
+            // Fallback: use the refresh token cookie to find and delete the session
+            const refreshToken = await getRefreshTokenCookie();
+            if (refreshToken) {
+                const hashedToken = hashToken(refreshToken);
+                const session = await prisma.session.findFirst({
+                    where: { refreshToken: hashedToken },
+                });
+                if (session) {
+                    await prisma.session.deleteMany({
+                        where: { userId: session.userId },
+                    });
+                }
+            }
         }
 
         await clearRefreshTokenCookie();
