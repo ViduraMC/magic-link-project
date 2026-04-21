@@ -1,36 +1,210 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Magic Link Project — Passwordless Authentication
+
+A modern, secure **passwordless authentication system** built with Next.js. Users sign in by clicking a secure link sent to their email — no passwords required. If the email doesn't exist, the account is automatically created (auto-registration).
+
+## Architecture Overview
+
+```mermaid
+flowchart TD
+    A["User enters email on /login"] --> B["POST /api/auth/magic-link/send"]
+    B --> C["Generate token, hash it, store in DB"]
+    C --> D["Email plain token as clickable link"]
+    D --> E["User clicks link in email"]
+    E --> F["/magic-login?token=xxx"]
+    F --> G["POST /api/auth/magic-link/verify"]
+    G --> H{"User exists?"}
+    H -- Yes --> I["Log them in"]
+    H -- No --> J["Create account + Log them in"]
+    I --> K["Issue JWT + Session + Cookie"]
+    J --> K
+    K --> L["/dashboard"]
+```
+
+## Tech Stack
+
+- **Framework:** Next.js 16 (App Router)
+- **Database:** Neon PostgreSQL (Serverless)
+- **ORM:** Prisma 7 with PrismaPg adapter
+- **Email:** Nodemailer + Gmail SMTP
+- **Auth:** JWT (Access Token) + HttpOnly Cookie (Refresh Token)
+- **Styling:** Tailwind CSS 4
+- **Language:** TypeScript
+
+## Project Structure
+
+```
+magic-link-project/
+├── prisma/
+│   ├── schema.prisma              # Database models (User, Session, MagicLinkToken)
+│   └── migrations/                # Database migration history
+├── src/
+│   ├── app/
+│   │   ├── api/auth/
+│   │   │   ├── magic-link/
+│   │   │   │   ├── send/route.ts      # POST - Send magic link email
+│   │   │   │   └── verify/route.ts    # POST - Verify token & login
+│   │   │   ├── me/route.ts            # GET  - Get current user
+│   │   │   ├── logout/route.ts        # POST - Logout current session
+│   │   │   ├── refresh/route.ts       # POST - Refresh access token
+│   │   │   └── sessions/route.ts      # GET  - List active sessions
+│   │   ├── login/page.tsx             # Email input form
+│   │   ├── magic-login/page.tsx       # Token verification page
+│   │   ├── dashboard/page.tsx         # Protected dashboard
+│   │   └── page.tsx                   # Root redirect
+│   ├── lib/
+│   │   ├── prisma.ts                  # Prisma client singleton
+│   │   ├── jwt.ts                     # JWT generation & verification
+│   │   ├── tokens.ts                  # Token generation & SHA-256 hashing
+│   │   ├── cookies.ts                 # HttpOnly cookie helpers
+│   │   ├── email.ts                   # Magic link email sender
+│   │   ├── auth.ts                    # getCurrentUser helper
+│   │   └── validations.ts            # Email format validation
+│   ├── types/
+│   │   └── index.ts                   # TypeScript interfaces
+│   └── generated/
+│       └── prisma/                    # Auto-generated Prisma client
+├── .env                               # Environment variables
+├── prisma.config.ts                   # Prisma configuration
+├── package.json
+└── tsconfig.json
+```
+
+## API Endpoints
+
+### `POST /api/auth/magic-link/send`
+
+Send a magic link to the user's email.
+
+| Field | Value |
+|-------|-------|
+| Body  | `{ "email": "user@example.com" }` |
+| Rate Limit | 1 request per email per 60 seconds |
+| Token Expiry | 15 minutes |
+
+### `POST /api/auth/magic-link/verify`
+
+Verify the magic link token and log the user in.
+
+| Field | Value |
+|-------|-------|
+| Body  | `{ "token": "plain_token_from_email" }` |
+| Returns | `{ accessToken: "jwt..." }` + sets HttpOnly refresh cookie |
+| Auto-Register | Creates account if email doesn't exist |
+| Session Limit | Max 2 sessions per user (oldest removed) |
+
+### `GET /api/auth/me`
+
+Get the currently authenticated user's profile.
+
+| Field | Value |
+|-------|-------|
+| Header | `Authorization: Bearer <accessToken>` |
+| Requires | Valid access token + valid refresh cookie + matching session in DB |
+
+### `POST /api/auth/logout`
+
+Log out the current session.
+
+| Field | Value |
+|-------|-------|
+| Auth | Uses refresh token cookie (works even with expired access token) |
+| Scope | Deletes only the current session, not other devices |
+
+### `POST /api/auth/refresh`
+
+Get a new access token when the current one expires.
+
+| Field | Value |
+|-------|-------|
+| Auth | Uses refresh token cookie |
+| Rotation | Old refresh token is invalidated, new one is issued |
+| Session Renewal | Session expiry extended by 14 days |
+
+### `GET /api/auth/sessions`
+
+List all active sessions for the current user.
+
+| Field | Value |
+|-------|-------|
+| Header | `Authorization: Bearer <accessToken>` |
+| Returns | Array of sessions (id, IP, userAgent, timestamps) |
+
+## Two-Token System
+
+| | Access Token | Refresh Token |
+|---|---|---|
+| **Stored in** | localStorage | HttpOnly cookie |
+| **Sent via** | `Authorization: Bearer` header | Automatically by browser |
+| **Lifespan** | 15 minutes | 14 days |
+| **Purpose** | Authenticates each API request | Gets new access tokens silently |
+| **If expired** | Frontend calls `/refresh` | User must request new magic link |
+
+## Security Measures
+
+| Threat | Protection |
+|--------|------------|
+| Token theft from DB breach | All tokens stored as SHA-256 hashes |
+| Magic link reuse | Token deleted from DB immediately after use |
+| Expired magic link | 15-minute expiration enforced server-side |
+| Email spam / flooding | Rate limit: 1 magic link per email per 60 seconds |
+| XSS stealing refresh token | HttpOnly cookie (JavaScript can't access it) |
+| CSRF attacks | SameSite: lax cookie policy |
+| Email leak in URL | Email removed from magic link URL; looked up from DB |
+| Token in browser history | `window.history.replaceState` clears URL after use |
+| Session hijacking | JWT userId cross-validated against session's userId |
+| Stolen refresh token reuse | Refresh token rotation: old token invalidated on every refresh |
+| Unlimited sessions | 2-session limit per user; oldest auto-removed |
+| Expired session access | Session expiry checked server-side on every request |
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Node.js 20+
+- A [Neon](https://neon.tech) PostgreSQL database
+- A Gmail account with [App Password](https://myaccount.google.com/apppasswords)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/ViduraMC/magic-link-project.git
+   cd magic-link-project
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-## Learn More
+3. **Configure environment variables** — Create a `.env` file:
+   ```env
+   DATABASE_URL="postgresql://user:pass@host/dbname?sslmode=require"
+   JWT_ACCESS_SECRET="your-random-secret-1"
+   JWT_REFRESH_SECRET="your-random-secret-2"
+   EMAIL_USER="your-email@gmail.com"
+   EMAIL_APP_PASSWORD="your-gmail-app-password"
+   NEXT_PUBLIC_APP_URL="http://localhost:3000"
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+4. **Run database migration**
+   ```bash
+   npx prisma generate
+   npx prisma migrate dev --name init
+   ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+5. **Start the development server**
+   ```bash
+   npm run dev
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+6. Open [http://localhost:3000](http://localhost:3000) — enter your email and check your inbox!
 
-## Deploy on Vercel
+## Deployment (Vercel)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Push to GitHub
+2. Import the repo on [Vercel](https://vercel.com)
+3. Add all `.env` variables in Vercel → Settings → Environment Variables
+4. Set `NEXT_PUBLIC_APP_URL` to your Vercel production URL
+5. Update the build command to: `prisma generate && prisma migrate deploy && next build`
+6. Deploy!
