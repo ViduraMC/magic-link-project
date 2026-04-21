@@ -199,12 +199,3 @@ List all active sessions for the current user.
    ```
 
 6. Open [http://localhost:3000](http://localhost:3000) — enter your email and check your inbox!
-
-## Deployment (Vercel)
-
-1. Push to GitHub
-2. Import the repo on [Vercel](https://vercel.com)
-3. Add all `.env` variables in Vercel → Settings → Environment Variables
-4. Set `NEXT_PUBLIC_APP_URL` to your Vercel production URL
-5. Update the build command to: `prisma generate && prisma migrate deploy && next build`
-6. Deploy!
