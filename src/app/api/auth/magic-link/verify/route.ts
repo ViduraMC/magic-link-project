@@ -8,16 +8,14 @@ import { ApiResponse } from "@/types";
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { token, email } = body;
+        const { token } = body;
 
-        if (!token || !email) {
+        if (!token) {
             return NextResponse.json<ApiResponse>(
-                { success: false, message: "Token and email are required", statusCode: 400 },
+                { success: false, message: "Token is required", statusCode: 400 },
                 { status: 400 }
             );
         }
-
-        const normalizedEmail = email.toLowerCase().trim();
 
         // Find and validate the magic link token
         const hashedToken = hashToken(token);
@@ -25,7 +23,6 @@ export async function POST(request: NextRequest) {
         const magicLinkToken = await prisma.magicLinkToken.findFirst({
             where: {
                 token: hashedToken,
-                email: normalizedEmail,
                 expiresAt: { gt: new Date() },
             },
         });
@@ -42,19 +39,19 @@ export async function POST(request: NextRequest) {
 
         // Find or create the user (auto-registration)
         let user = await prisma.user.findUnique({
-            where: { email: normalizedEmail },
+            where: { email: magicLinkToken.email },
         });
 
         if (!user) {
             user = await prisma.user.create({
                 data: {
-                    email: normalizedEmail,
+                    email: magicLinkToken.email,
                     emailVerified: true,
                 },
             });
         }
 
-        // Clean up expired sessions before creating a new one
+        // Clean up expired sessions
         await prisma.session.deleteMany({
             where: {
                 userId: user.id,
@@ -62,7 +59,7 @@ export async function POST(request: NextRequest) {
             },
         });
 
-        // Enforce 2-session limit (delete oldest if at limit)
+        // Enforce 2-session limit
         const activeSessions = await prisma.session.findMany({
             where: { userId: user.id },
             orderBy: { createdAt: "asc" },
@@ -93,11 +90,10 @@ export async function POST(request: NextRequest) {
                 refreshToken: hashedRefreshToken,
                 userAgent,
                 ipAddress,
-                expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
+                expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
             },
         });
 
-        // Set refresh token cookie
         await setRefreshTokenCookie(refreshToken);
 
         return NextResponse.json<ApiResponse<{ accessToken: string }>>(

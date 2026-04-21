@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function MagicLoginContent() {
@@ -8,15 +8,18 @@ function MagicLoginContent() {
     const searchParams = useSearchParams();
     const [status, setStatus] = useState<"verifying" | "success" | "error">("verifying");
     const [message, setMessage] = useState("");
+    const hasRun = useRef(false);
 
     useEffect(() => {
+        if (hasRun.current) return;
+        hasRun.current = true;
+
         const verify = async () => {
             const token = searchParams.get("token");
-            const email = searchParams.get("email");
 
-            if (!token || !email) {
+            if (!token) {
                 setStatus("error");
-                setMessage("Invalid magic link. Missing token or email.");
+                setMessage("Invalid magic link. Missing token.");
                 return;
             }
 
@@ -24,12 +27,13 @@ function MagicLoginContent() {
                 const res = await fetch("/api/auth/magic-link/verify", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ token, email }),
+                    body: JSON.stringify({ token }),
                 });
 
                 const data = await res.json();
 
                 if (res.ok && data.data?.accessToken) {
+                    window.history.replaceState({}, "", "/magic-login");
                     localStorage.setItem("accessToken", data.data.accessToken);
                     setStatus("success");
                     setMessage("Login successful! Redirecting...");
