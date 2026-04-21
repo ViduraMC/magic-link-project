@@ -26,6 +26,21 @@ export async function POST(request: NextRequest) {
 
         const normalizedEmail = email.toLowerCase().trim();
 
+        // Rate limit: check if a magic link was sent in the last 60 seconds
+        const recentToken = await prisma.magicLinkToken.findFirst({
+            where: {
+                email: normalizedEmail,
+                createdAt: { gt: new Date(Date.now() - 60 * 1000) }, // within last 60 seconds
+            },
+        });
+
+        if (recentToken) {
+            return NextResponse.json<ApiResponse>(
+                { success: false, message: "Please wait 60 seconds before requesting another link.", statusCode: 429 },
+                { status: 429 }
+            );
+        }
+
         // Delete any old magic link tokens for this email
         await prisma.magicLinkToken.deleteMany({
             where: { email: normalizedEmail },
@@ -39,7 +54,7 @@ export async function POST(request: NextRequest) {
             data: {
                 email: normalizedEmail,
                 token: hashedToken,
-                expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+                expiresAt: new Date(Date.now() + 15 * 60 * 1000),
             },
         });
 
